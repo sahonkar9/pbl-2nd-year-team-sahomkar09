@@ -1144,3 +1144,75 @@ public:
     }
 };
 
+
+// ===== OMKAR: MANAGER MENU AND MAIN FUNCTION =====
+void managerMenu(Inventory &inv, Sales &sales, OrderBook &orders) {
+    printf("Password: ");
+    char password[32];
+    readLine(password, sizeof(password));
+    if (strcmp(password, MANAGER_PASS) != 0) { printf("Wrong password.\n"); return; }
+
+    while (true) {
+        removeExpired(inv, sales);
+
+        printf("\n--- MANAGER  (%d order(s) waiting) ---\n", orders.waiting());
+        printf(" 1. Total inventory\n");
+        printf(" 2. Add / restock product\n");
+        printf(" 3. Delete product\n");
+        printf(" 4. Search product by ID\n");
+        printf(" 5. Food sorted by expiry\n");
+        printf(" 6. Expired items file\n");
+        printf(" 7. View all orders\n");
+        printf(" 8. Process next order (priority first)\n");
+        printf(" 9. Sales and profit\n");
+        printf("10. Back\n");
+        printf("Choose: ");
+
+        int choice = readInt();
+        if (choice == 1)       inv.showAll(true);
+        else if (choice == 2)  inv.addProduct();
+        else if (choice == 3)  inv.deleteProduct();
+        else if (choice == 4) {
+            printf("Product ID: ");
+            Product *p = inv.find(readInt());
+            if (p != NULL) inv.showOne(*p, true);
+            else           printf("Not found.\n");
+        }
+        else if (choice == 5)  showExpiryList(inv);
+        else if (choice == 6)  showExpiredLog();
+        else if (choice == 7)  orders.showAll();
+        else if (choice == 8)  orders.processNext(sales);
+        else if (choice == 9)  sales.showReport();
+        else if (choice == 10) return;
+        else printf("Invalid choice.\n");
+    }
+}
+
+// OOP note: This project mainly uses encapsulation and composition; it does not use inheritance.
+int main() {
+    Inventory inv;
+    Sales sales;
+    OrderBook orders;
+    UserDB users;
+
+    while (true) {
+        removeExpired(inv, sales);
+
+        printf("\n==============================\n");
+        printf("        S T O C K L I N K\n");
+        printf("   Cloth | Electronic | Food\n");
+        printf("==============================\n");
+        printf("1. Customer\n2. Manager\n3. Exit\nChoose: ");
+
+        int choice = readInt();
+        if (choice == 1) {
+            CustomerPortal portal(inv, orders, users);
+            portal.run();
+        }
+        else if (choice == 2) managerMenu(inv, sales, orders);
+        else if (choice == 3) { printf("Goodbye!\n"); break; }
+        else printf("Invalid choice.\n");
+    }
+    return 0;
+}
+
