@@ -1089,3 +1089,58 @@ class CustomerPortal {
         city.describe(area, wantsPriority);
         showRecommendations(*p);
     }
+
+// RAHUL: show related products after a purchase.
+    void showRecommendations(const Product &bought) {
+        Product suggest[3];
+        int n = recommend(inv, orders, bought, suggest, 3);
+        if (n == 0) return;
+        printf("\nYou may also like:\n");
+        inv.showList(suggest, n, false);
+    }
+
+    void payToSkip() {
+        orders.showFor(name);
+        printf("Which order number do you want to make PRIORITY (fee Rs %.0f)? ", PRIORITY_FEE);
+        int id = readInt();
+        if (orders.payToSkip(id, name)) {
+            printf("Done! Order #%d is now number %d in the PRIORITY queue.\n", id, orders.positionOf(id));
+            Order *o = orders.find(id);
+            if (o != NULL && o->eta > 0) printf("New estimated time: about %d min.\n", o->eta);
+        } else {
+            printf("Cannot do that (not your order, already delivered, or already priority).\n");
+        }
+    }
+
+public:
+    CustomerPortal(Inventory &i, OrderBook &o, UserDB &u) : inv(i), orders(o), users(u) { name[0] = '\0'; }
+
+    void run() {
+        if (!authenticate()) return;
+
+        while (true) {
+            printf("\n--- Welcome %s ---\n", name);
+            printf("1. View inventory\n");
+            printf("2. Search by ID\n");
+            printf("3. Search by name or category\n");
+            printf("4. Place an order\n");
+            printf("5. My orders\n");
+            printf("6. Pay extra to skip the queue\n");
+            printf("7. Delivery times\n");
+            printf("8. Back\n");
+            printf("Choose: ");
+
+            int choice = readInt();
+            if (choice == 1)      inv.showAll(false);
+            else if (choice == 2) searchById();
+            else if (choice == 3) searchByName();
+            else if (choice == 4) placeOrder();
+            else if (choice == 5) orders.showFor(name);
+            else if (choice == 6) payToSkip();
+            else if (choice == 7) city.showAreas();
+            else if (choice == 8) return;
+            else printf("Invalid choice.\n");
+        }
+    }
+};
+
