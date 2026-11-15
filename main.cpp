@@ -704,3 +704,157 @@ public:
 
 DeliveryMap city;
 
+
+// ===== AMAN: ORDERS =====
+// OOP: Composition - OrderBook contains normal and priority Queue objects.
+class OrderBook {
+    static const int MAX_ORDERS = 1000;
+    Order list[MAX_ORDERS];
+    int count;
+    Queue priorityQueue;
+    Queue normalQueue;
+
+    void save() {
+        FILE *f = fopen(ORDERS_FILE, "w");
+        if (f == NULL) { printf("Warning: could not save orders.\n"); return; }
+        for (int i = 0; i < count; i++) {
+            Order &o = list[i];
+            fprintf(f, "%d|%s|%d|%s|%d|%.2f|%.2f|%.2f|%d|%d|%s|%d|%d\n", o.id, o.customer, o.productId,
+                    o.product, o.qty, o.total, o.cost, o.fee, o.priority, o.delivered, o.date, o.area, o.eta);
+        }
+        fclose(f);
+    }
+
+public:
+
+    OrderBook() {
+        count = 0;
+        FILE *f = fopen(ORDERS_FILE, "r");
+        if (f == NULL) return;
+
+        char line[512];
+        while (count < MAX_ORDERS && fgets(line, sizeof(line), f) != NULL) {
+            Order o = Order();
+            int pr, dl;
+            // 11 fields = old file format, 13 fields = with delivery area and time
+            int got = sscanf(line, "%d|%23[^|]|%d|%31[^|]|%d|%lf|%lf|%lf|%d|%d|%16[^|\n]|%d|%d",
+                             &o.id, o.customer, &o.productId, o.product, &o.qty,
+                             &o.total, &o.cost, &o.fee, &pr, &dl, o.date, &o.area, &o.eta);
+            if (got != 11 && got != 13) continue;
+            if (got == 11 || o.area < 0 || o.area >= AREAS) { o.area = 0; o.eta = 0; }
+            o.priority = (pr == 1);
+            o.delivered = (dl == 1);
+            list[count] = o;
+            count++;
+            if (!o.delivered) {
+                if (o.priority) priorityQueue.push(o.id);
+                else            normalQueue.push(o.id);
+            }
+        }
+        fclose(f);
+    }
+
+    int waiting() const { return priorityQueue.size() + normalQueue.size(); }
+    int total() const { return count; }
+    const Order &at(int i) const { return list[i]; }
+
+    Order *find(int id) {
+        for (int i = 0; i < count; i++)
+            if (list[i].id == id) return &list[i];
+        return NULL;
+    }
+
+    int positionOf(int id) {
+        Order *o = find(id);
+        if (o == NULL || o->delivered) return 0;
+        if (o->priority) return priorityQueue.position(id);
+        return priorityQueue.size() + normalQueue.position(id);
+    }
+
+    int placeOrder(Inventory &inv, const char *customer, Product &p, int qty, bool wantsPriority, int area) {
+        if (qty < 1 || qty > p.qty || count >= MAX_ORDERS) return 0;
+
+        Order o = Order();
+        o.id = (count == 0) ? 1 : list[count - 1].id + 1;
+        snprintf(o.customer, sizeof(o.customer), "%s", customer);
+        snprintf(o.product, sizeof(o.product), "%s", p.name);
+        o.productId = p.id;
+        o.qty = qty;
+        o.total = qty * p.price;
+        o.cost = qty * p.cost;
+        o.priority = wantsPriority;
+        o.fee = wantsPriority ? PRIORITY_FEE : 0;
+        o.delivered = false;
+        o.area = area;
+        o.eta = city.eta(area, wantsPriority);         // Dijkstra-based delivery time
+        time_t now = time(NULL);
+        strftime(o.date, sizeof(o.date), "%Y-%m-%d %H:%M", localtime(&now));
+
+        p.qty = p.qty - qty;
+        inv.save();
+
+        list[count] = o;
+        count++;
+        if (wantsPriority) priorityQueue.push(o.id);
+        else               normalQueue.push(o.id);
+        save();
+        return o.id;
+    }
+
+    bool payToSkip(int id, const char *customer) {
+        Order *o = find(id);
+        if (o == NULL || o->delivered || o->priority) return false;
+        if (!sameNoCase(o->customer, customer)) return false;
+
+        normalQueue.removeOrder(id);
+        priorityQueue.push(id);
+        o->priority = true;
+        o->fee = PRIORITY_FEE;
+        if (o->eta > 0) o->eta = city.eta(o->area, true);   // faster packing, new time
+        save();
+        return true;
+    }
+
+    void processNext(Sales &sales) {
+        if (waiting() == 0) { printf("No orders are waiting.\n"); return; }
+
+        int id;
+        if (!priorityQueue.isEmpty()) id = priorityQueue.pop();
+        else                          id = normalQueue.pop();
+
+        Order *o = find(id);
+        o->delivered = true;
+        sales.recordSale(o->id, o->product, o->qty, o->total, o->cost, o->fee);
+        save();
+
+        printf("Delivered order #%d: %d x %s to %s (Rs %.0f)%s\n", o->id, o->qty, o->product,
+               o->customer, o->total + o->fee, o->priority ? "  [PRIORITY]" : "");
+    }
+
+    void printOrder(const Order &o) {
+        char status[32];
+        if (o.delivered)      snprintf(status, sizeof(status), "Delivered");
+        else if (o.priority)  snprintf(status, sizeof(status), "PRIORITY queue #%d", positionOf(o.id));
+        else                  snprintf(status, sizeof(status), "Normal queue #%d", positionOf(o.id));
+        printf("#%-4d%-12s%-12s x%-4d Rs%-8.0f %-20s %s\n", o.id, o.customer, o.product,
+               o.qty, o.total + o.fee, status, o.date);
+        if (!o.delivered && o.eta > 0)
+            printf("      %s: %s, ready/delivery in about %d min\n",
+                   o.area == 0 ? "Pickup" : "Deliver to", AREA_NAME[o.area], o.eta);
+    }
+    void showAll() {
+        printf("\n===== ALL ORDERS =====\n");
+        printf("Waiting: %d priority, %d normal\n", priorityQueue.size(), normalQueue.size());
+        if (count == 0) printf("No orders yet.\n");
+        for (int i = 0; i < count; i++) printOrder(list[i]);
+    }
+    void showFor(const char *customer) {
+        printf("\n===== ORDERS OF %s =====\n", customer);
+        int found = 0;
+        for (int i = 0; i < count; i++) {
+            if (sameNoCase(list[i].customer, customer)) { printOrder(list[i]); found++; }
+        }
+        if (found == 0) printf("You have not ordered anything yet.\n");
+    }
+};
+
