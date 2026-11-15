@@ -19,6 +19,7 @@ const char *const INV_FILE     = "inventory.txt";
 const char *const ORDERS_FILE  = "orders.txt";
 const char *const SALES_FILE   = "sales.txt";
 const char *const EXPIRED_FILE = "expired.txt";
+const char *const USERS_FILE   = "userpass.txt";
 
 struct Product {
     int id;
