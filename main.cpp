@@ -101,3 +101,28 @@ inline void addDays(int days, char *out) {
     mktime(&date);
     strftime(out, 11, "%Y-%m-%d", &date);
 }
+
+inline bool validDate(const char *text) {
+    int y, m, d;
+    if (strlen(text) != 10 || text[4] != '-' || text[7] != '-') return false;
+    if (sscanf(text, "%d-%d-%d", &y, &m, &d) != 3) return false;
+    tm date = tm();
+    date.tm_year = y - 1900; date.tm_mon = m - 1; date.tm_mday = d; date.tm_hour = 12;
+    mktime(&date);
+    return y >= 2000 && date.tm_mon == m - 1 && date.tm_mday == d;
+}
+
+inline int daysLeft(const char *text) {
+    int y, m, d;
+    sscanf(text, "%d-%d-%d", &y, &m, &d);
+    tm expiry = tm();
+    expiry.tm_year = y - 1900; expiry.tm_mon = m - 1; expiry.tm_mday = d; expiry.tm_hour = 12;
+
+    time_t now = time(NULL);
+    tm today = *localtime(&now);
+    today.tm_hour = 12; today.tm_min = 0; today.tm_sec = 0;
+
+    double days = difftime(mktime(&expiry), mktime(&today)) / (60.0 * 60.0 * 24.0);
+    if (days < 0) return (int)(days - 0.5);
+    return (int)(days + 0.5);
+}
