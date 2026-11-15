@@ -529,3 +529,88 @@ public:
         printf("PROFIT           : Rs %.2f\n", income - cost - losses);
     }
 };
+
+// ===== NIKHIL: MERGE SORT AND EXPIRY MANAGEMENT =====
+// DSA: Merge Sort arranges food products by expiry date.
+
+
+
+// ===== AMAN: NORMAL AND PRIORITY QUEUES =====
+// DSA: Linked-list queues follow FIFO; priority orders are processed first.
+// OOP: Encapsulation - queue nodes and links stay private inside the class.
+class Queue {
+    struct Box {
+        int orderId;
+        Box *next;
+    };
+    Box *front;
+    Box *back;
+    int count;
+
+public:
+    Queue() { front = NULL; back = NULL; count = 0; }
+    ~Queue() { while (!isEmpty()) pop(); }
+
+    bool isEmpty() const { return front == NULL; }
+    int size() const { return count; }
+
+    void push(int orderId) {
+        Box *b = new Box;
+        b->orderId = orderId;
+        b->next = NULL;
+        if (back == NULL) front = b;
+        else back->next = b;
+        back = b;
+        count++;
+    }
+
+    int pop() {
+        Box *b = front;
+        int orderId = b->orderId;
+        front = b->next;
+        if (front == NULL) back = NULL;
+        delete b;
+        count--;
+        return orderId;
+    }
+
+    int position(int orderId) const {
+        int place = 1;
+        for (Box *b = front; b != NULL; b = b->next) {
+            if (b->orderId == orderId) return place;
+            place++;
+        }
+        return 0;
+    }
+
+    void removeOrder(int orderId) {
+        Box *before = NULL;
+        for (Box *b = front; b != NULL; before = b, b = b->next) {
+            if (b->orderId == orderId) {
+                if (before == NULL) front = b->next;
+                else before->next = b->next;
+                if (b == back) back = before;
+                delete b;
+                count--;
+                return;
+            }
+        }
+    }
+};
+
+struct Order {
+    int id;
+    char customer[24];
+    char product[32];
+    int productId;
+    int qty;
+    double total;
+    double cost;
+    double fee;
+    bool priority;
+    bool delivered;
+    char date[17];
+    int area;                              // delivery area (index in AREA_NAME)
+    int eta;                               // estimated delivery time in minutes (0 = none)
+};
+
