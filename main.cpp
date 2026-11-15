@@ -462,3 +462,70 @@ public:
         printf("Deleted %s (ID %d).\n", name, id);
     }
 };
+
+
+// ===== AMAN: SALES AND PROFIT =====
+// OOP: Encapsulation - sales totals and report functions belong to one class.
+class Sales {
+    double sales;
+    double fees;
+    double cost;
+    double losses;
+    int orders;
+    int units;
+
+public:
+
+    Sales() {
+        sales = fees = cost = losses = 0;
+        orders = units = 0;
+
+        FILE *f = fopen(SALES_FILE, "r");
+        if (f == NULL) return;
+
+        char line[256], name[32];
+        int id, qty;
+        double rev, c, fee;
+        while (fgets(line, sizeof(line), f) != NULL) {
+
+            if (sscanf(line, "S|%d|%31[^|]|%d|%lf|%lf|%lf", &id, name, &qty, &rev, &c, &fee) == 6) {
+                sales += rev; cost += c; fees += fee; units += qty; orders++;
+            }
+
+            else if (sscanf(line, "L|%31[^|]|%d|%lf", name, &qty, &c) == 3) {
+                losses += c;
+            }
+        }
+        fclose(f);
+    }
+
+    void recordSale(int orderId, const char *name, int qty, double rev, double c, double fee) {
+        FILE *f = fopen(SALES_FILE, "a");
+        if (f != NULL) {
+            fprintf(f, "S|%d|%s|%d|%.2f|%.2f|%.2f\n", orderId, name, qty, rev, c, fee);
+            fclose(f);
+        }
+        sales += rev; cost += c; fees += fee; units += qty; orders++;
+    }
+
+    void recordLoss(const char *name, int qty, double c) {
+        FILE *f = fopen(SALES_FILE, "a");
+        if (f != NULL) {
+            fprintf(f, "L|%s|%d|%.2f\n", name, qty, c);
+            fclose(f);
+        }
+        losses += c;
+    }
+
+    void showReport() {
+        double income = sales + fees;
+        printf("\n========== SALES & PROFIT ==========\n");
+        printf("Orders delivered : %d  (%d items)\n", orders, units);
+        printf("Item sales       : Rs %.2f\n", sales);
+        printf("Priority fees    : Rs %.2f\n", fees);
+        printf("Total income     : Rs %.2f\n", income);
+        printf("Cost of goods    : Rs %.2f\n", cost);
+        printf("Expiry losses    : Rs %.2f\n", losses);
+        printf("PROFIT           : Rs %.2f\n", income - cost - losses);
+    }
+};
