@@ -858,3 +858,42 @@ public:
     }
 };
 
+// ===== RAHUL: PRODUCT RELATION AND RECOMMENDATION =====
+// Two relations give each product a score:
+//   1. Bought together: other products ordered by customers who also ordered this one (+10 each)
+//   2. Same category: related items from the same section, still in stock (+3)
+// The highest scores are shown as "You may also like".
+inline int recommend(Inventory &inv, OrderBook &orders, const Product &bought, Product out[], int maxOut) {
+    Product all[MAX_PRODUCTS];
+    int score[MAX_PRODUCTS];
+    int n = inv.getAll(all);
+    for (int i = 0; i < n; i++) score[i] = 0;
+
+    for (int i = 0; i < orders.total(); i++) {
+        if (orders.at(i).productId != bought.id) continue;
+        for (int j = 0; j < orders.total(); j++) {
+            const Order &other = orders.at(j);
+            if (other.productId == bought.id) continue;
+            if (!sameNoCase(other.customer, orders.at(i).customer)) continue;
+            for (int k = 0; k < n; k++)
+                if (all[k].id == other.productId) score[k] += 10;
+        }
+    }
+
+    for (int k = 0; k < n; k++)
+        if (all[k].cat == bought.cat) score[k] += 3;
+
+    int count = 0;
+    while (count < maxOut) {                       // pick the best score each round
+        int best = -1;
+        for (int k = 0; k < n; k++) {
+            if (all[k].id == bought.id || all[k].qty <= 0 || score[k] <= 0) continue;
+            if (best == -1 || score[k] > score[best]) best = k;
+        }
+        if (best == -1) break;
+        out[count++] = all[best];
+        score[best] = 0;
+    }
+    return count;
+}
+
