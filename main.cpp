@@ -613,4 +613,94 @@ struct Order {
     int area;                              // delivery area (index in AREA_NAME)
     int eta;                               // estimated delivery time in minutes (0 = none)
 };
+// ===== RAHUL: DELIVERY TIME (DIJKSTRA SHORTEST PATH) =====
+// DSA: The city is a weighted graph (adjacency matrix). Node 0 is the store.
+//      Dijkstra finds the shortest road distance from the store to the customer's area.
+const int AREAS = 8;
+const char *const AREA_NAME[AREAS] = {"Store", "Market", "Station", "Hospital", "College", "Park", "Mall", "Colony"};
+const double SPEED_KMH    = 30.0;          // average delivery speed
+const int PREP_NORMAL     = 20;            // minutes to pack a normal order
+const int PREP_PRIORITY   = 5;             // minutes to pack a priority order
+const double INF_DIST     = 1e9;
+
+// OOP: Encapsulation - road map and Dijkstra are hidden inside the class.
+class DeliveryMap {
+    double road[AREAS][AREAS];             // distance in km, 0 = no direct road
+
+    void addRoad(int a, int b, double km) { road[a][b] = km; road[b][a] = km; }
+
+public:
+    DeliveryMap() {
+        for (int i = 0; i < AREAS; i++)
+            for (int j = 0; j < AREAS; j++) road[i][j] = 0;
+        addRoad(0, 1, 2.0);  addRoad(0, 2, 4.5);  addRoad(1, 2, 2.0);
+        addRoad(1, 3, 3.0);  addRoad(2, 4, 3.5);  addRoad(3, 5, 2.5);
+        addRoad(4, 5, 1.5);  addRoad(3, 6, 5.0);  addRoad(5, 6, 2.0);
+        addRoad(4, 7, 4.0);  addRoad(6, 7, 1.5);
+    }
+
+    // DSA: Dijkstra from the store (node 0). Returns km to `target`;
+    //      fills path[] with the areas to pass through, in order.
+    double shortest(int target, int path[], int &len) {
+        double dist[AREAS];
+        int prev[AREAS];
+        bool done[AREAS];
+        for (int i = 0; i < AREAS; i++) { dist[i] = INF_DIST; prev[i] = -1; done[i] = false; }
+        dist[0] = 0;
+
+        for (int step = 0; step < AREAS; step++) {
+            int u = -1;                    // closest area not finished yet
+            for (int i = 0; i < AREAS; i++)
+                if (!done[i] && (u == -1 || dist[i] < dist[u])) u = i;
+            if (u == -1 || dist[u] >= INF_DIST) break;
+            done[u] = true;
+
+            for (int v = 0; v < AREAS; v++)            // relax every road from u
+                if (road[u][v] > 0 && dist[u] + road[u][v] < dist[v]) {
+                    dist[v] = dist[u] + road[u][v];
+                    prev[v] = u;
+                }
+        }
+
+        int tmp[AREAS];                    // walk back from target to store
+        len = 0;
+        for (int v = target; v != -1; v = prev[v]) tmp[len++] = v;
+        for (int i = 0; i < len; i++) path[i] = tmp[len - 1 - i];
+        return dist[target];
+    }
+
+    // Delivery time = packing time + travel time.
+    int eta(int area, bool priority) {
+        int prep = priority ? PREP_PRIORITY : PREP_NORMAL;
+        if (area == 0) return prep;                    // pickup: only packing time
+        int path[AREAS], len;
+        double km = shortest(area, path, len);
+        return prep + (int)(km / SPEED_KMH * 60.0 + 0.5);
+    }
+
+    void describe(int area, bool priority) {
+        if (area == 0) {
+            printf("Pickup at the store: ready in about %d min.\n", eta(0, priority));
+            return;
+        }
+        int path[AREAS], len;
+        double km = shortest(area, path, len);
+        printf("Route: ");
+        for (int i = 0; i < len; i++) printf("%s%s", AREA_NAME[path[i]], i + 1 < len ? " -> " : "");
+        printf("  (%.1f km)\n", km);
+        printf("Estimated delivery: about %d min.\n", eta(area, priority));
+    }
+
+    void showAreas() {
+        printf("\n===== DELIVERY TIMES FROM THE STORE =====\n");
+        printf("%-4s%-12s%-10s%-14s%s\n", "No.", "Area", "Distance", "Normal", "Priority");
+        for (int a = 1; a < AREAS; a++) {
+            int path[AREAS], len;
+            double km = shortest(a, path, len);
+            printf("%-4d%-12s%-4.1f km    %-3d min       %d min\n", a, AREA_NAME[a], km, eta(a, false), eta(a, true));
+        }
+    }
+};
+
+DeliveryMap city;
 
