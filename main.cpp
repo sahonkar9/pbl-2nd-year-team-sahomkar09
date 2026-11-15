@@ -897,3 +897,195 @@ inline int recommend(Inventory &inv, OrderBook &orders, const Product &bought, P
     return count;
 }
 
+
+// ===== OMKAR: USER ACCOUNTS (FNV-1a HASHING) =====
+// DSA: FNV-1a is a fast hash function. It is used for two things here:
+//      (1) the password is stored only as a hash in userpass.txt, never as plain text
+//      (2) the hash of the username picks the bucket in the hash table
+// Note: FNV-1a is not a cryptographic hash; real systems use bcrypt or argon2.
+inline unsigned int fnv1a(const char *text) {
+    unsigned int hash = 2166136261u;               // FNV offset basis
+    for (; *text != '\0'; text++) {
+        hash = hash ^ (unsigned char)*text;
+        hash = hash * 16777619u;                   // FNV prime
+    }
+    return hash;
+}
+
+// OOP: Encapsulation - the hash table and file handling are private.
+class UserDB {
+    static const int BUCKETS = 32;
+
+    struct Account {
+        char name[24];
+        unsigned int passHash;
+        Account *next;                             // chaining: same bucket = linked list
+    };
+    Account *table[BUCKETS];
+
+    static void lower(const char *in, char *out, int size) {
+        int i = 0;
+        for (; in[i] != '\0' && i < size - 1; i++) out[i] = (char)tolower((unsigned char)in[i]);
+        out[i] = '\0';
+    }
+
+    int bucketOf(const char *name) {
+        char key[24];
+        lower(name, key, sizeof(key));
+        return (int)(fnv1a(key) % BUCKETS);
+    }
+
+    // Hash of "username:password" so equal passwords give different hashes.
+    unsigned int hashPassword(const char *name, const char *pass) {
+        char key[24], mixed[96];
+        lower(name, key, sizeof(key));
+        snprintf(mixed, sizeof(mixed), "%s:%s", key, pass);
+        return fnv1a(mixed);
+    }
+
+    Account *findAccount(const char *name) {
+        for (Account *a = table[bucketOf(name)]; a != NULL; a = a->next)
+            if (sameNoCase(a->name, name)) return a;
+        return NULL;
+    }
+
+    void insertAccount(const char *name, unsigned int hash) {
+        Account *a = new Account;
+        snprintf(a->name, sizeof(a->name), "%s", name);
+        a->passHash = hash;
+        int b = bucketOf(name);
+        a->next = table[b];
+        table[b] = a;
+    }
+
+public:
+    UserDB() {
+        for (int i = 0; i < BUCKETS; i++) table[i] = NULL;
+        FILE *f = fopen(USERS_FILE, "r");
+        if (f == NULL) return;
+        char line[128], name[24];
+        unsigned int hash;
+        while (fgets(line, sizeof(line), f) != NULL)
+            if (sscanf(line, "%23[^|]|%x", name, &hash) == 2 && findAccount(name) == NULL)
+                insertAccount(name, hash);
+        fclose(f);
+    }
+
+    ~UserDB() {
+        for (int i = 0; i < BUCKETS; i++) {
+            Account *a = table[i];
+            while (a != NULL) { Account *next = a->next; delete a; a = next; }
+        }
+    }
+
+    bool exists(const char *name) { return findAccount(name) != NULL; }
+
+    bool createUser(const char *name, const char *pass) {
+        if (exists(name)) return false;
+        unsigned int hash = hashPassword(name, pass);
+        insertAccount(name, hash);
+        FILE *f = fopen(USERS_FILE, "a");
+        if (f == NULL) { printf("Warning: could not save account.\n"); return true; }
+        fprintf(f, "%s|%08x\n", name, hash);
+        fclose(f);
+        return true;
+    }
+
+    bool check(const char *name, const char *pass) {
+        Account *a = findAccount(name);
+        return a != NULL && a->passHash == hashPassword(name, pass);
+    }
+};
+
+// ===== OMKAR: CUSTOMER PORTAL AND ORDERING =====
+// OOP: CustomerPortal uses Inventory, OrderBook and UserDB objects (composition/references).
+class CustomerPortal {
+    Inventory &inv;
+    OrderBook &orders;
+    UserDB &users;
+    char name[24];
+
+    void createAccount() {
+        char user[24], pass[32], again[32];
+        printf("Choose a username: ");
+        readLine(user, sizeof(user));
+        if (user[0] == '\0')      { printf("Username cannot be empty.\n"); return; }
+        if (users.exists(user))   { printf("That username is already taken.\n"); return; }
+        printf("Choose a password (at least 4 characters): ");
+        readLine(pass, sizeof(pass));
+        if (strlen(pass) < 4)     { printf("Password is too short.\n"); return; }
+        printf("Type the password again: ");
+        readLine(again, sizeof(again));
+        if (strcmp(pass, again) != 0) { printf("Passwords do not match.\n"); return; }
+        users.createUser(user, pass);
+        printf("Account created. You can login now.\n");
+    }
+
+    bool login() {
+        for (int attempt = 1; attempt <= 3; attempt++) {
+            char user[24], pass[32];
+            printf("Username: ");
+            readLine(user, sizeof(user));
+            printf("Password: ");
+            readLine(pass, sizeof(pass));
+            if (users.check(user, pass)) {
+                snprintf(name, sizeof(name), "%s", user);
+                return true;
+            }
+            printf("Wrong username or password.\n");
+        }
+        return false;
+    }
+
+    // Customer must create an account and login before shopping.
+    bool authenticate() {
+        while (true) {
+            printf("\n--- CUSTOMER ACCOUNT ---\n1. Create account\n2. Login\n3. Back\nChoose: ");
+            int choice = readInt();
+            if (choice == 1)      createAccount();
+            else if (choice == 2) { if (login()) return true; }
+            else if (choice == 3) return false;
+            else printf("Invalid choice.\n");
+        }
+    }
+
+    void searchById() {
+        printf("Product ID: ");
+        Product *p = inv.find(readInt());
+        if (p == NULL) { printf("No product with that ID.\n"); return; }
+        inv.showOne(*p, false);
+    }
+
+    void searchByName() {
+        char word[32];
+        printf("Type a name or category (example: lap, shirt, food): ");
+        readLine(word, sizeof(word));
+        inv.searchByName(word, false);
+    }
+
+    void placeOrder() {
+        printf("Product ID to order: ");
+        Product *p = inv.find(readInt());
+        if (p == NULL)   { printf("No product with that ID.\n"); return; }
+        if (p->qty == 0) { printf("Sorry, out of stock.\n"); return; }
+
+        printf("%s costs Rs %.0f each. %d in stock. How many? ", p->name, p->price, p->qty);
+        int qty = readInt();
+        if (qty < 1 || qty > p->qty) { printf("Invalid quantity.\n"); return; }
+
+        printf("Total: Rs %.0f\n", qty * p->price);
+        printf("Pay Rs %.0f extra to skip the queue (PRIORITY)?  1 = Yes, 0 = No: ", PRIORITY_FEE);
+        bool wantsPriority = (readInt() == 1);
+
+        city.showAreas();
+        printf("Delivery area number (0 = pick up at the store): ");
+        int area = readInt();
+        if (area < 0 || area >= AREAS) { printf("Invalid area.\n"); return; }
+
+        int id = orders.placeOrder(inv, name, *p, qty, wantsPriority, area);
+        if (id == 0) { printf("Order failed.\n"); return; }
+        printf("Order #%d placed! You are number %d in the %s queue.\n",
+               id, orders.positionOf(id), wantsPriority ? "PRIORITY" : "normal");
+        city.describe(area, wantsPriority);
+        showRecommendations(*p);
+    }
