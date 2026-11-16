@@ -532,7 +532,96 @@ public:
 
 // ===== NIKHIL: MERGE SORT AND EXPIRY MANAGEMENT =====
 // DSA: Merge Sort arranges food products by expiry date.
+inline void mergeSort(Product a[], Product temp[], int start, int end) {
+    if (end - start < 2) return;
 
+    int middle = (start + end) / 2;
+    mergeSort(a, temp, start, middle);
+    mergeSort(a, temp, middle, end);
+
+    int i = start;
+    int j = middle;
+    int k = start;
+    while (i < middle && j < end) {
+        if (strcmp(a[i].expiry, a[j].expiry) <= 0) { temp[k] = a[i]; i++; }
+        else                                       { temp[k] = a[j]; j++; }
+        k++;
+    }
+    while (i < middle) { temp[k] = a[i]; i++; k++; }
+    while (j < end)    { temp[k] = a[j]; j++; k++; }
+
+    for (k = start; k < end; k++) a[k] = temp[k];
+}
+
+inline int getFoodSorted(Inventory &inv, Product foods[]) {
+    Product all[MAX_PRODUCTS];
+    Product temp[MAX_PRODUCTS];
+    int total = inv.getAll(all);
+
+    int count = 0;
+    for (int i = 0; i < total; i++)
+        if (all[i].cat == FOOD) { foods[count] = all[i]; count++; }
+
+    mergeSort(foods, temp, 0, count);
+    return count;
+}
+
+inline int removeExpired(Inventory &inv, Sales &sales) {
+    Product foods[MAX_PRODUCTS];
+    int count = getFoodSorted(inv, foods);
+    int removed = 0;
+
+    for (int i = 0; i < count; i++) {
+        Product &p = foods[i];
+        if (daysLeft(p.expiry) >= 0) break;
+
+        double lostMoney = p.qty * p.cost;
+
+        FILE *f = fopen(EXPIRED_FILE, "a");
+        if (f != NULL) {
+            fprintf(f, "%s|%d|%s|%d|%.2f\n", p.expiry, p.id, p.name, p.qty, lostMoney);
+            fclose(f);
+        }
+        sales.recordLoss(p.name, p.qty, lostMoney);
+        inv.remove(p.id);
+        removed++;
+        printf("EXPIRED: %s (ID %d, %d items, expired on %s) -> moved to %s and deleted.\n",
+               p.name, p.id, p.qty, p.expiry, EXPIRED_FILE);
+    }
+    if (removed > 0) inv.save();
+    return removed;
+}
+
+inline void showExpiryList(Inventory &inv) {
+    Product foods[MAX_PRODUCTS];
+    int count = getFoodSorted(inv, foods);
+
+    printf("\n===== FOOD SORTED BY EXPIRY (soonest first) =====\n");
+    if (count == 0) { printf("No food in the shop.\n"); return; }
+    printf("%-5s%-14s%-6s%-12s%s\n", "ID", "Name", "Qty", "Expiry", "Days left");
+    for (int i = 0; i < count; i++) {
+        int left = daysLeft(foods[i].expiry);
+        printf("%-5d%-14s%-6d%-12s%d", foods[i].id, foods[i].name, foods[i].qty, foods[i].expiry, left);
+        if (left <= 3) printf("   <-- expiring soon!");
+        printf("\n");
+    }
+}
+
+inline void showExpiredLog() {
+    printf("\n===== EXPIRED ITEMS (from %s) =====\n", EXPIRED_FILE);
+    FILE *f = fopen(EXPIRED_FILE, "r");
+    if (f == NULL) { printf("Nothing has expired yet.\n"); return; }
+
+    printf("%-12s%-5s%-14s%-6s%s\n", "Expired on", "ID", "Name", "Qty", "Money lost");
+    char line[256], date[16], name[32];
+    int id, qty;
+    double lost;
+    while (fgets(line, sizeof(line), f) != NULL) {
+        if (sscanf(line, "%15[^|]|%d|%31[^|]|%d|%lf", date, &id, name, &qty, &lost) == 5)
+            printf("%-12s%-5d%-14s%-6d Rs %.0f\n", date, id, name, qty, lost);
+    }
+    fclose(f);
+}
 
 
 // ===== AMAN: NORMAL AND PRIORITY QUEUES =====
