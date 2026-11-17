@@ -621,6 +621,22 @@ inline void showExpiredLog() {
             printf("%-12s%-5d%-14s%-6d Rs %.0f\n", date, id, name, qty, lost);
     }
     fclose(f);
+    // NIKHIL: lists food that expires within limitDays (uses the merge-sorted list)
+inline void showExpiringSoon(Inventory &inv, int limitDays) {
+    Product foods[MAX_PRODUCTS];
+    int count = getFoodSorted(inv, foods);
+
+    printf("\n===== FOOD EXPIRING IN %d DAY(S) OR LESS =====\n", limitDays);
+    int found = 0;
+    for (int i = 0; i < count; i++) {
+        int left = daysLeft(foods[i].expiry);
+        if (left > limitDays) break;              // list is sorted, so the rest expire later
+        if (found == 0) printf("%-5s%-14s%-6s%-12s%s\n", "ID", "Name", "Qty", "Expiry", "Days left");
+        printf("%-5d%-14s%-6d%-12s%d\n", foods[i].id, foods[i].name, foods[i].qty, foods[i].expiry, left);
+        found++;
+    }
+    if (found == 0) printf("Nothing is expiring soon.\n");
+}
 }
 
 
