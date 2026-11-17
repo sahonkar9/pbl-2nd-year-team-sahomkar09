@@ -847,6 +847,27 @@ inline void showSortedInventory(Inventory &inv) {
     printProductHeader();
     for (int i = 0; i < n; i++) printProductLine(list[i]);
 }
+// ---------- low stock report with reorder estimate ----------
+// Target stock is 3 times the limit; the report shows how many to buy and what it costs.
+inline void showLowStock(Inventory &inv, int limit) {
+    Product list[MAX_PRODUCTS];
+    int n = sortedInventory(inv, list, BY_QTY);      // lowest quantity first
+
+    printf("\n===== LOW STOCK (%d or fewer in stock) =====\n", limit);
+    int found = 0;
+    double totalCost = 0;
+    for (int i = 0; i < n; i++) {
+        if (list[i].qty > limit) break;              // sorted, so the rest have enough
+        int reorder = limit * 3 - list[i].qty;
+        double cost = reorder * list[i].cost;
+        if (found == 0) printf("%-5s%-14s%-6s%-10s%s\n", "ID", "Name", "Qty", "Reorder", "Cost");
+        printf("%-5d%-14s%-6d%-10d Rs %.0f\n", list[i].id, list[i].name, list[i].qty, reorder, cost);
+        totalCost += cost;
+        found++;
+    }
+    if (found == 0) printf("All products have enough stock.\n");
+    else            printf("Total cost to restock: Rs %.0f\n", totalCost);
+}
 
 // ===== AMAN: NORMAL AND PRIORITY QUEUES =====
 // DSA: Linked-list queues follow FIFO; priority orders are processed first.
