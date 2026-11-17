@@ -868,7 +868,34 @@ inline void showLowStock(Inventory &inv, int limit) {
     if (found == 0) printf("All products have enough stock.\n");
     else            printf("Total cost to restock: Rs %.0f\n", totalCost);
 }
+// ---------- COMMIT 7: stock value per category ----------
+inline void showStockValue(Inventory &inv) {
+    Product list[MAX_PRODUCTS];
+    int n = inv.getAll(list);
 
+    double costValue[3]   = {0, 0, 0};
+    double retailValue[3] = {0, 0, 0};
+    int units[3]          = {0, 0, 0};
+    for (int i = 0; i < n; i++) {
+        int c = list[i].cat;
+        costValue[c]   += list[i].qty * list[i].cost;
+        retailValue[c] += list[i].qty * list[i].price;
+        units[c]       += list[i].qty;
+    }
+
+    printf("\n===== STOCK VALUE BY CATEGORY =====\n");
+    printf("%-12s%-8s%-14s%-14s%s\n", "Category", "Units", "Cost value", "Retail value", "Profit if sold");
+    double totalCost = 0, totalRetail = 0;
+    int totalUnits = 0;
+    for (int c = 0; c < 3; c++) {
+        printf("%-12s%-8d%-14.0f%-14.0f%.0f\n", CAT_NAME[c], units[c], costValue[c],
+               retailValue[c], retailValue[c] - costValue[c]);
+        totalCost += costValue[c];
+        totalRetail += retailValue[c];
+        totalUnits += units[c];
+    }
+    printf("%-12s%-8d%-14.0f%-14.0f%.0f\n", "TOTAL", totalUnits, totalCost, totalRetail, totalRetail - totalCost);
+}
 // ===== AMAN: NORMAL AND PRIORITY QUEUES =====
 // DSA: Linked-list queues follow FIFO; priority orders are processed first.
 // OOP: Encapsulation - queue nodes and links stay private inside the class.
