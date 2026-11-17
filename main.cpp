@@ -766,6 +766,88 @@ inline void expiryMenu(Inventory &inv, Sales &sales) {
         else printf("Invalid choice.\n");
     }
 }
+// =====================================================================
+// NEW FEATURES : stock analysis for the manager
+// DSA: Merge sort on any field + binary search on the sorted prices.
+// =====================================================================
+
+// ---------- generic merge sort (name / quantity / price / margin) ----------
+enum SortKey { BY_NAME, BY_QTY, BY_PRICE, BY_MARGIN };
+
+// Profit margin in percent of the selling price.
+inline double marginPercent(const Product &p) {
+    if (p.price <= 0) return 0;
+    return (p.price - p.cost) / p.price * 100.0;
+}
+
+inline int compareNoCase(const char *a, const char *b) {
+    while (*a != '\0' && *b != '\0') {
+        int x = tolower((unsigned char)*a);
+        int y = tolower((unsigned char)*b);
+        if (x != y) return x - y;
+        a++; b++;
+    }
+    return tolower((unsigned char)*a) - tolower((unsigned char)*b);
+}
+
+// true if a should stay before b (<= keeps the sort stable).
+// Name, quantity and price go low to high; margin goes high to low.
+inline bool comesBefore(const Product &a, const Product &b, int key) {
+    if (key == BY_NAME)  return compareNoCase(a.name, b.name) <= 0;
+    if (key == BY_QTY)   return a.qty <= b.qty;
+    if (key == BY_PRICE) return a.price <= b.price;
+    return marginPercent(a) >= marginPercent(b);
+}
+
+inline void mergeSortBy(Product a[], Product temp[], int start, int end, int key) {
+    if (end - start < 2) return;
+
+    int middle = (start + end) / 2;
+    mergeSortBy(a, temp, start, middle, key);
+    mergeSortBy(a, temp, middle, end, key);
+
+    int i = start, j = middle, k = start;
+    while (i < middle && j < end) {
+        if (comesBefore(a[i], a[j], key)) { temp[k] = a[i]; i++; }
+        else                              { temp[k] = a[j]; j++; }
+        k++;
+    }
+    while (i < middle) { temp[k] = a[i]; i++; k++; }
+    while (j < end)    { temp[k] = a[j]; j++; k++; }
+
+    for (k = start; k < end; k++) a[k] = temp[k];
+}
+
+inline int sortedInventory(Inventory &inv, Product out[], int key) {
+    Product temp[MAX_PRODUCTS];
+    int n = inv.getAll(out);
+    mergeSortBy(out, temp, 0, n, key);
+    return n;
+}
+
+inline void printProductHeader() {
+    printf("%-5s%-14s%-12s%-6s%-9s%-9s%s\n", "ID", "Name", "Category", "Qty", "Cost", "Price", "Margin");
+}
+
+inline void printProductLine(const Product &p) {
+    printf("%-5d%-14s%-12s%-6d%-9.0f%-9.0f%.1f%%\n",
+           p.id, p.name, CAT_NAME[p.cat], p.qty, p.cost, p.price, marginPercent(p));
+}
+
+inline void showSortedInventory(Inventory &inv) {
+    printf("Sort by: 1=Name  2=Quantity (low first)  3=Price (low first)  4=Profit margin (high first): ");
+    int c = readInt();
+    if (c < 1 || c > 4) { printf("Invalid choice.\n"); return; }
+
+    Product list[MAX_PRODUCTS];
+    int n = sortedInventory(inv, list, c - 1);
+
+    printf("\n===== INVENTORY SORTED (merge sort) =====\n");
+    if (n == 0) { printf("The shop is empty.\n"); return; }
+    printProductHeader();
+    for (int i = 0; i < n; i++) printProductLine(list[i]);
+}
+
 // ===== AMAN: NORMAL AND PRIORITY QUEUES =====
 // DSA: Linked-list queues follow FIFO; priority orders are processed first.
 // OOP: Encapsulation - queue nodes and links stay private inside the class.
