@@ -637,6 +637,22 @@ inline void showExpiringSoon(Inventory &inv, int limitDays) {
     }
     if (found == 0) printf("Nothing is expiring soon.\n");
 }
+    // NIKHIL: total cost of food that will expire within limitDays
+inline double expiryRisk(Inventory &inv, int limitDays) {
+    Product foods[MAX_PRODUCTS];
+    int count = getFoodSorted(inv, foods);
+    double risk = 0;
+    for (int i = 0; i < count; i++) {
+        if (daysLeft(foods[i].expiry) > limitDays) break;
+        risk += foods[i].qty * foods[i].cost;
+    }
+    return risk;
+}
+
+inline void showExpiryRisk(Inventory &inv, int limitDays) {
+    printf("\nStock worth Rs %.2f (cost price) expires within %d day(s).\n",
+           expiryRisk(inv, limitDays), limitDays);
+}
 }
 
 
