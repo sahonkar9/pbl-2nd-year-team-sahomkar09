@@ -653,6 +653,30 @@ inline void showExpiryRisk(Inventory &inv, int limitDays) {
     printf("\nStock worth Rs %.2f (cost price) expires within %d day(s).\n",
            expiryRisk(inv, limitDays), limitDays);
 }
+    // NIKHIL: small sub-menu for all expiry features
+inline void expiryMenu(Inventory &inv, Sales &sales) {
+    while (true) {
+        removeExpired(inv, sales);
+
+        printf("\n--- EXPIRY TOOLS ---\n");
+        printf("1. Food sorted by expiry\n");
+        printf("2. Food expiring within 7 days\n");
+        printf("3. Money at risk (next 7 days)\n");
+        printf("4. Discount suggestions\n");
+        printf("5. Expired items file\n");
+        printf("6. Back\n");
+        printf("Choose: ");
+
+        int choice = readInt();
+        if (choice == 1)      showExpiryList(inv);
+        else if (choice == 2) showExpiringSoon(inv, 7);
+        else if (choice == 3) showExpiryRisk(inv, 7);
+        else if (choice == 4) showDiscountSuggestions(inv);
+        else if (choice == 5) showExpiredLog();
+        else if (choice == 6) return;
+        else printf("Invalid choice.\n");
+    }
+}
     // NIKHIL: give a percentage discount to ONE product (manager chooses id and percent)
 inline bool giveDiscount(Inventory &inv, int id, double percent) {
     Product *p = inv.find(id);
