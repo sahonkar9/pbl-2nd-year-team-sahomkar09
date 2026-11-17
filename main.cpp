@@ -1462,7 +1462,240 @@ public:
         return a != NULL && a->passHash == hashPassword(name, pass);
     }
 };
+struct ProductReview {
+    int orderId;
+    int productId;
+    int rating;
+    char username[24];
+    char comment[121];
+};
 
+enum ReviewResult {
+    REVIEW_SAVED,
+    REVIEW_ORDER_NOT_FOUND,
+    REVIEW_NOT_YOURS,
+    REVIEW_ORDER_NOT_DELIVERED,
+    REVIEW_INVALID_RATING,
+    REVIEW_EMPTY_COMMENT,
+    REVIEW_ALREADY_EXISTS,
+    REVIEW_FILE_ERROR
+};
+
+class ReviewBook {
+    bool parseLine(const char *line, ProductReview &review) {
+        int fields = sscanf(line, "%d|%23[^|]|%d|%d|%120[^\r\n]",
+                            &review.orderId, review.username, &review.productId,
+                            &review.rating, review.comment);
+        return fields == 5 && review.orderId > 0 && review.productId > 0 &&
+               review.rating >= 1 && review.rating <= 5;
+    }
+
+    bool orderAlreadyReviewed(int orderId) {
+        FILE *f = fopen("reviews.txt", "r");
+        if (f == NULL) return false;
+
+        char line[256];
+        ProductReview review;
+        while (fgets(line, sizeof(line), f) != NULL) {
+            if (parseLine(line, review) && review.orderId == orderId) {
+                fclose(f);
+                return true;
+            }
+        }
+        fclose(f);
+        return false;
+    }
+
+    int collectRatings(Inventory &inv, Product products[],
+                       int reviewCounts[], int ratingTotals[]) {
+        int productCount = inv.getAll(products);
+        for (int i = 0; i < productCount; i++) {
+            reviewCounts[i] = 0;
+            ratingTotals[i] = 0;
+        }
+
+        FILE *f = fopen("reviews.txt", "r");
+        if (f == NULL) return 0;
+
+        int totalReviews = 0;
+        char line[256];
+        ProductReview review;
+
+        while (fgets(line, sizeof(line), f) != NULL) {
+            if (!parseLine(line, review)) continue;
+
+            for (int i = 0; i < productCount; i++) {
+                if (products[i].id == review.productId) {
+                    reviewCounts[i]++;
+                    ratingTotals[i] += review.rating;
+                    totalReviews++;
+                    break;
+                }
+            }
+        }
+
+        fclose(f);
+        return totalReviews;
+    }
+
+public:
+    ReviewResult submit(OrderBook &orders, const char *username, int orderId,
+                        int rating, const char *comment) {
+        Order *order = orders.find(orderId);
+        if (order == NULL) return REVIEW_ORDER_NOT_FOUND;
+        if (!sameNoCase(order->customer, username)) return REVIEW_NOT_YOURS;
+        if (!order->delivered) return REVIEW_ORDER_NOT_DELIVERED;
+        if (rating < 1 || rating > 5) return REVIEW_INVALID_RATING;
+        if (comment[0] == '\0') return REVIEW_EMPTY_COMMENT;
+        if (orderAlreadyReviewed(orderId)) return REVIEW_ALREADY_EXISTS;
+
+        FILE *f = fopen("reviews.txt", "a");
+        if (f == NULL) return REVIEW_FILE_ERROR;
+
+        bool written = fprintf(f, "%d|%s|%d|%d|%s\n", order->id, username,
+                               order->productId, rating, comment) >= 0;
+        if (fclose(f) != 0) written = false;
+        return written ? REVIEW_SAVED : REVIEW_FILE_ERROR;
+    }
+
+    void showProductReviews(int productId) {
+        FILE *f = fopen("reviews.txt", "r");
+        if (f == NULL) {
+            printf("No reviews have been written yet.\n");
+            return;
+        }
+
+        int count = 0;
+        int ratingTotal = 0;
+        int stars[5] = {0, 0, 0, 0, 0};
+        char line[256];
+        ProductReview review;
+
+        while (fgets(line, sizeof(line), f) != NULL) {
+            if (!parseLine(line, review) || review.productId != productId) continue;
+            count++;
+            ratingTotal += review.rating;
+            stars[review.rating - 1]++;
+        }
+        fclose(f);
+
+        if (count == 0) {
+            printf("No reviews for this product yet.\n");
+            return;
+        }
+
+        printf("\n===== PRODUCT REVIEWS =====\n");
+        printf("Average rating: %.1f / 5 (%d review(s))\n",
+               (double)ratingTotal / count, count);
+        printf("Ratings: 1 star: %d  2 stars: %d  3 stars: %d  4 stars: %d  5 stars: %d\n",
+               stars[0], stars[1], stars[2], stars[3], stars[4]);
+
+        f = fopen("reviews.txt", "r");
+        if (f == NULL) {
+            printf("Could not reopen the reviews file.\n");
+            return;
+        }
+
+        printf("\n%-12s%-8s%s\n", "Customer", "Rating", "Comment");
+        while (fgets(line, sizeof(line), f) != NULL) {
+            if (!parseLine(line, review) || review.productId != productId) continue;
+            printf("%-12s%-8d%s\n", review.username, review.rating, review.comment);
+        }
+        fclose(f);
+    }
+
+    void showCustomerReviews(const char *username) {
+        FILE *f = fopen("reviews.txt", "r");
+        if (f == NULL) {
+            printf("You have not written any reviews yet.\n");
+            return;
+        }
+
+        int count = 0;
+        char line[256];
+        ProductReview review;
+
+        printf("\n===== YOUR REVIEWS =====\n");
+        printf("%-8s%-8s%-12s%s\n", "Order", "Product", "Rating", "Comment");
+
+        while (fgets(line, sizeof(line), f) != NULL) {
+            if (!parseLine(line, review) ||
+                !sameNoCase(review.username, username)) continue;
+            printf("#%-7d%-8d%-12d%s\n", review.orderId, review.productId,
+                   review.rating, review.comment);
+            count++;
+        }
+        fclose(f);
+
+        if (count == 0) printf("You have not written any reviews yet.\n");
+    }
+
+    void showSummary(Inventory &inv) {
+        Product products[MAX_PRODUCTS];
+        int reviewCounts[MAX_PRODUCTS];
+        int ratingTotals[MAX_PRODUCTS];
+        int total = collectRatings(inv, products, reviewCounts, ratingTotals);
+
+        printf("\n===== PRODUCT RATING SUMMARY =====\n");
+        if (total == 0) {
+            printf("No product reviews are available.\n");
+            return;
+        }
+
+        int productCount = inv.getAll(products);
+        printf("%-6s%-16s%-12s%s\n", "ID", "Product", "Reviews", "Average");
+        for (int i = 0; i < productCount; i++) {
+            if (reviewCounts[i] == 0) continue;
+            printf("%-6d%-16s%-12d%.1f / 5\n", products[i].id, products[i].name,
+                   reviewCounts[i], (double)ratingTotals[i] / reviewCounts[i]);
+        }
+    }
+
+    void showTopRated(Inventory &inv, int limit) {
+        Product products[MAX_PRODUCTS];
+        int reviewCounts[MAX_PRODUCTS];
+        int ratingTotals[MAX_PRODUCTS];
+        int total = collectRatings(inv, products, reviewCounts, ratingTotals);
+        bool shown[MAX_PRODUCTS] = {false};
+
+        printf("\n===== TOP-RATED PRODUCTS =====\n");
+        if (total == 0) {
+            printf("No product reviews are available.\n");
+            return;
+        }
+
+        int productCount = inv.getAll(products);
+        if (limit > productCount) limit = productCount;
+
+        int output = 0;
+        while (output < limit) {
+            int best = -1;
+            for (int i = 0; i < productCount; i++) {
+                if (shown[i] || reviewCounts[i] == 0) continue;
+                if (best == -1) {
+                    best = i;
+                    continue;
+                }
+
+                double average = (double)ratingTotals[i] / reviewCounts[i];
+                double bestAverage = (double)ratingTotals[best] / reviewCounts[best];
+                if (average > bestAverage ||
+                    (average == bestAverage && reviewCounts[i] > reviewCounts[best]))
+                    best = i;
+            }
+             #if 0 
+            if (best == -1) break;
+            shown[best] = true;
+            printf("%d. %-16s %.1f / 5 (%d review(s))\n", output + 1,
+                   products[best].name,
+                   (double)ratingTotals[best] / reviewCounts[best],
+                   reviewCounts[best]);
+            output++;
+        }
+    }
+};
+
+ReviewBook reviewBook;
 // ===== OMKAR: CUSTOMER PORTAL AND ORDERING =====
 // OOP: CustomerPortal uses Inventory, OrderBook and UserDB objects (composition/references).
 class CustomerPortal {
@@ -1521,6 +1754,7 @@ class CustomerPortal {
         if (p == NULL) { printf("No product with that ID.\n"); return; }
         inv.showOne(*p, false);
     }
+    #endif
 
     void searchByName() {
         char word[32];
@@ -1577,7 +1811,71 @@ class CustomerPortal {
             printf("Cannot do that (not your order, already delivered, or already priority).\n");
         }
     }
+    void writeProductReview() {
+        orders.showFor(name);
+        printf("Delivered order ID to review: ");
+        int orderId = readInt();
 
+        printf("Rating (1-5): ");
+        int rating = readInt();
+
+        char comment[121];
+        printf("Comment: ");
+        readLine(comment, sizeof(comment));
+
+        ReviewResult result = reviewBook.submit(orders, name, orderId, rating, comment);
+        if (result == REVIEW_SAVED)
+            printf("Thank you. Your review has been saved.\n");
+        else if (result == REVIEW_ORDER_NOT_FOUND)
+            printf("Order not found.\n");
+        else if (result == REVIEW_NOT_YOURS)
+            printf("You can only review your own orders.\n");
+        else if (result == REVIEW_ORDER_NOT_DELIVERED)
+            printf("You can review an order after it is delivered.\n");
+        else if (result == REVIEW_INVALID_RATING)
+            printf("Rating must be between 1 and 5.\n");
+        else if (result == REVIEW_EMPTY_COMMENT)
+            printf("Please enter a comment.\n");
+        else if (result == REVIEW_ALREADY_EXISTS)
+            printf("This order already has a review.\n");
+        else
+            printf("Could not save the review. Check file permissions.\n");
+    }
+
+    void browseProductReviews() {
+        printf("Product ID: ");
+        int id = readInt();
+        Product *p = inv.find(id);
+        if (p == NULL) {
+            printf("No product with that ID.\n");
+            return;
+        }
+
+        printf("\nReviews for %s:\n", p->name);
+        reviewBook.showProductReviews(id);
+    }
+
+    void showMyReviews() {
+        reviewBook.showCustomerReviews(name);
+    }
+
+    void reviewsMenu() {
+        while (true) {
+            printf("\n--- REVIEWS AND RATINGS ---\n");
+            printf("1. Write a review\n");
+            printf("2. Browse product reviews\n");
+            printf("3. View my reviews\n");
+            printf("4. Back\n");
+            printf("Choose: ");
+
+            int choice = readInt();
+            if (choice == 1) writeProductReview();
+            else if (choice == 2) browseProductReviews();
+            else if (choice == 3) showMyReviews();
+            else if (choice == 4) return;
+            else printf("Invalid choice.\n");
+        }
+    }
 public:
     CustomerPortal(Inventory &i, OrderBook &o, UserDB &u) : inv(i), orders(o), users(u) { name[0] = '\0'; }
 
@@ -1594,6 +1892,7 @@ public:
             printf("6. Pay extra to skip the queue\n");
             printf("7. Delivery times\n");
             printf("8. Back\n");
+            printf("9. Reviews and ratings\n");
             printf("Choose: ");
 
             int choice = readInt();
@@ -1605,6 +1904,7 @@ public:
             else if (choice == 6) payToSkip();
             else if (choice == 7) city.showAreas();
             else if (choice == 8) return;
+            else if (choice == 9) reviewsMenu();
             else printf("Invalid choice.\n");
         }
     }
@@ -1632,6 +1932,8 @@ void managerMenu(Inventory &inv, Sales &sales, OrderBook &orders) {
         printf(" 8. Process next order (priority first)\n");
         printf(" 9. Sales and profit\n");
         printf("10. Back\n");
+        printf("11. Product rating summary\n");
+        printf("12. Top-rated products\n");
         printf("Choose: ");
 
         int choice = readInt();
@@ -1650,6 +1952,8 @@ void managerMenu(Inventory &inv, Sales &sales, OrderBook &orders) {
         else if (choice == 8)  orders.processNext(sales);
         else if (choice == 9)  sales.showReport();
         else if (choice == 10) return;
+        else if (choice == 11) reviewBook.showSummary(inv);
+        else if (choice == 12) reviewBook.showTopRated(inv, 5);
         else printf("Invalid choice.\n");
     }
 }
