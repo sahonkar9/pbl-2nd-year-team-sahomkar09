@@ -868,7 +868,7 @@ inline void showLowStock(Inventory &inv, int limit) {
     if (found == 0) printf("All products have enough stock.\n");
     else            printf("Total cost to restock: Rs %.0f\n", totalCost);
 }
-// ---------- COMMIT 7: stock value per category ----------
+// ---------- stock value per category ----------
 inline void showStockValue(Inventory &inv) {
     Product list[MAX_PRODUCTS];
     int n = inv.getAll(list);
@@ -895,6 +895,111 @@ inline void showStockValue(Inventory &inv) {
         totalUnits += units[c];
     }
     printf("%-12s%-8d%-14.0f%-14.0f%.0f\n", "TOTAL", totalUnits, totalCost, totalRetail, totalRetail - totalCost);
+}
+// ---------- price range search, top margin, price warnings ----------
+// DSA: Binary search on the price-sorted array finds the first product >= price.
+inline int firstPriceAtLeast(const Product list[], int n, double price) {
+    int low = 0, high = n;
+    while (low < high) {
+        int mid = (low + high) / 2;
+        if (list[mid].price < price) low = mid + 1;
+        else                         high = mid;
+    }
+    return low;
+}
+
+inline void searchByPriceRange(Inventory &inv) {
+    printf("Minimum price: ");
+    double lo = readDouble();
+    printf("Maximum price: ");
+    double hi = readDouble();
+    if (hi < lo) { printf("Maximum must be at least the minimum.\n"); return; }
+
+    Product list[MAX_PRODUCTS];
+    int n = sortedInventory(inv, list, BY_PRICE);
+    int i = firstPriceAtLeast(list, n, lo);          // binary search
+
+    printf("\n===== PRODUCTS FROM Rs %.0f TO Rs %.0f =====\n", lo, hi);
+    int found = 0;
+    for (; i < n && list[i].price <= hi; i++) {
+        if (found == 0) printProductHeader();
+        printProductLine(list[i]);
+        found++;
+    }
+    if (found == 0) printf("No product in that price range.\n");
+}
+
+inline void showTopMargin(Inventory &inv, int top) {
+    Product list[MAX_PRODUCTS];
+    int n = sortedInventory(inv, list, BY_MARGIN);   // highest margin first
+    if (top > n) top = n;
+
+    printf("\n===== TOP %d PRODUCTS BY PROFIT MARGIN =====\n", top);
+    if (top == 0) { printf("The shop is empty.\n"); return; }
+    printProductHeader();
+    for (int i = 0; i < top; i++) printProductLine(list[i]);
+}
+
+// Products sold at or below cost price give no profit.
+inline void showPriceWarnings(Inventory &inv) {
+    Product list[MAX_PRODUCTS];
+    int n = inv.getAll(list);
+
+    printf("\n===== PRICE WARNINGS =====\n");
+    int found = 0;
+    for (int i = 0; i < n; i++) {
+        if (list[i].price > list[i].cost) continue;
+        printf("%s (ID %d): cost Rs %.0f, price Rs %.0f -> %s\n", list[i].name, list[i].id,
+               list[i].cost, list[i].price, list[i].price < list[i].cost ? "SELLING AT A LOSS" : "NO PROFIT");
+        found++;
+    }
+    if (found == 0) printf("Every product is priced above its cost.\n");
+}
+
+// NIKHIL: stock analysis sub-menu
+inline void analysisMenu(Inventory &inv) {
+    while (true) {
+        printf("\n--- STOCK ANALYSIS ---\n");
+        printf("1. Sort inventory (name / quantity / price / margin)\n");
+        printf("2. Low stock report\n");
+        printf("3. Stock value by category\n");
+        printf("4. Search by price range\n");
+        printf("5. Top 3 products by profit margin\n");
+        printf("6. Price warnings\n");
+        printf("7. Back\n");
+        printf("Choose: ");
+
+        int choice = readInt();
+        if (choice == 1)      showSortedInventory(inv);
+        else if (choice == 2) {
+            printf("Show products with how many items or fewer? ");
+            showLowStock(inv, readInt());
+        }
+        else if (choice == 3) showStockValue(inv);
+        else if (choice == 4) searchByPriceRange(inv);
+        else if (choice == 5) showTopMargin(inv, 3);
+        else if (choice == 6) showPriceWarnings(inv);
+        else if (choice == 7) return;
+        else printf("Invalid choice.\n");
+    }
+}
+
+// NIKHIL: one entry point for all of Nikhil's tools.
+// The manager menu only needs ONE line:  stockToolsMenu(inv, sales);
+inline void stockToolsMenu(Inventory &inv, Sales &sales) {
+    while (true) {
+        printf("\n--- NIKHIL'S TOOLS ---\n");
+        printf("1. Expiry and discounts\n");
+        printf("2. Stock analysis\n");
+        printf("3. Back\n");
+        printf("Choose: ");
+
+        int choice = readInt();
+        if (choice == 1)      expiryMenu(inv, sales);
+        else if (choice == 2) analysisMenu(inv);
+        else if (choice == 3) return;
+        else printf("Invalid choice.\n");
+    }
 }
 // ===== AMAN: NORMAL AND PRIORITY QUEUES =====
 // DSA: Linked-list queues follow FIFO; priority orders are processed first.
