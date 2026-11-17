@@ -656,7 +656,35 @@ inline void showExpiryRisk(Inventory &inv, int limitDays) {
     printf("\nStock worth Rs %.2f (cost price) expires within %d day(s).\n",
            expiryRisk(inv, limitDays), limitDays);
 }
+// ---------- discount suggestions ----------
+// NIKHIL: closer to expiry = bigger suggested discount
+inline double discountPercent(int daysToExpiry) {
+    if (daysToExpiry <= 1) return 40;
+    if (daysToExpiry <= 3) return 25;
+    if (daysToExpiry <= 7) return 10;
+    return 0;
+}
 
+// Only suggests; it does not change any price in the inventory.
+inline void showDiscountSuggestions(Inventory &inv) {
+    Product foods[MAX_PRODUCTS];
+    int count = getFoodSorted(inv, foods);
+
+    printf("\n===== DISCOUNT SUGGESTIONS =====\n");
+    int found = 0;
+    for (int i = 0; i < count; i++) {
+        int left = daysLeft(foods[i].expiry);
+        double pct = discountPercent(left);
+        if (pct == 0) break;                      // sorted, so the rest need no discount
+        double newPrice = foods[i].price * (1 - pct / 100.0);
+        if (newPrice < foods[i].cost) newPrice = foods[i].cost;   // never sell below cost
+        if (found == 0) printf("%-5s%-14s%-10s%-10s%s\n", "ID", "Name", "Days left", "Discount", "Suggested price");
+        printf("%-5d%-14s%-10d%-9.0f%% Rs %.0f (now Rs %.0f)\n",
+               foods[i].id, foods[i].name, left, pct, newPrice, foods[i].price);
+        found++;
+    }
+    if (found == 0) printf("No discount needed right now.\n");
+}
 // ===== AMAN: NORMAL AND PRIORITY QUEUES =====
 // DSA: Linked-list queues follow FIFO; priority orders are processed first.
 // OOP: Encapsulation - queue nodes and links stay private inside the class.
